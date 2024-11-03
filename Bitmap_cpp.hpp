@@ -6,21 +6,6 @@
 using namespace std;
 
 #pragma pack(push, 1)
-struct pixel
-{
-    unsigned char b;
-    unsigned char g;
-    unsigned char r;
-    unsigned char a;
-
-    pixel() : r(0), g(0), b(0), a(255) {}
-    pixel(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255) : r(r), g(g), b(b), a(a) {}
-    pixel operator+(const pixel& other);
-    pixel operator-(const pixel& other);
-    pixel operator*(const int& scaler);
-    pixel operator/(const int& scaler);
-};
-
 struct bmp_header
 {
     char signature[2];
@@ -42,7 +27,35 @@ struct bmp_info_header {
     uint32_t colors_used;
     uint32_t colors_important;
 };
+
+struct pixel
+{
+    unsigned char b;
+    unsigned char g;
+    unsigned char r;
+    unsigned char a;
+
+    pixel() : r(0), g(0), b(0), a(255) {}
+    pixel(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255);
+    pixel operator+(const pixel& other);
+    pixel operator-(const pixel& other);
+    pixel operator*(const int& scaler);
+    pixel operator/(const int& scaler);
+};
 #pragma pack(pop)
+
+pixel::pixel(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
+{
+    int r = min(255, max(0, static_cast<int>(r)));
+    int g = min(255, max(0, static_cast<int>(g)));
+    int b = min(255, max(0, static_cast<int>(b)));
+    int a = min(255, max(0, static_cast<int>(a)));
+
+    this->r = r;
+    this->g = g;
+    this->b = b;
+    this->a = a;
+}
 
 pixel pixel::operator+(const pixel& other)
 {
