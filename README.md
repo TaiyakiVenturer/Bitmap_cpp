@@ -13,23 +13,25 @@
 - C++11 或以上
 - Windows 作業系統
 
-## 讀取方式
+## 使用方法
+
+## 1. 讀取方式
 ```cpp
 #include "Bitmap_cpp.hpp"
 
-// 讀取圖片
+// 建構子讀取
 Bitmap_cpp image("Bitmap FilePath");
 
-// 或者
+// 使用 LoadBmp 函式
 Bitmap_cpp image;
 image.LoadBmp("Bitmap FilePath");
 ```
 
-## 輸出/轉換方式
+## 2. 輸出/轉換方式
 ```cpp
-// 轉換類型
-Bitmap^ bmp = image.toBitmap();
-
-// 或者
+// 使用轉型運算子
 Bitmap^ bmp = static_cast<Bitmap^>(image);
+
+// 使用 toBitmap 函式
+Bitmap^ bmp = image.toBitmap();
 ```
