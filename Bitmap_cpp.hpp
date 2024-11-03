@@ -127,7 +127,7 @@ void Bitmap_cpp::LoadBmp(string file_path)
 
     file.read(reinterpret_cast<char*>(&header), sizeof(bmp_header));
     if (header.signature[0] != 'B' || header.signature[1] != 'M')
-        throw runtime_error("Error: file is not a Bitmap_cpp file");
+        throw runtime_error("Error: file is not a Bitmap file");
 
     file.read(reinterpret_cast<char*>(&info_header), sizeof(bmp_info_header));
 
