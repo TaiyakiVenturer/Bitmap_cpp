@@ -13,7 +13,12 @@ struct pixel
     unsigned char r;
     unsigned char a;
 
-    pixel() : b(0), g(0), r(0), a(255) {}
+    pixel() : r(0), g(0), b(0), a(255) {}
+    pixel(unsigned char r, unsigned char g, unsigned char b, unsigned char a = 255) : r(r), g(g), b(b), a(a) {}
+    pixel operator+(const pixel& other);
+    pixel operator-(const pixel& other);
+    pixel operator*(const int& scaler);
+    pixel operator/(const int& scaler);
 };
 
 struct bmp_header
@@ -39,6 +44,42 @@ struct bmp_info_header {
 };
 #pragma pack(pop)
 
+pixel pixel::operator+(const pixel& other)
+{
+    pixel result;
+    result.b = min(255, b + other.b);
+    result.g = min(255, g + other.g);
+    result.r = min(255, r + other.r);
+    return result;
+}
+
+pixel pixel::operator-(const pixel& other)
+{
+    pixel result;
+    result.b = max(0, b - other.b);
+    result.g = max(0, g - other.g);
+    result.r = max(0, r - other.r);
+    return result;
+}
+
+pixel pixel::operator*(const int& scaler)
+{
+    pixel result;
+    result.b = min(255, max(0, b * scaler));
+    result.g = min(255, max(0, g * scaler));
+    result.r = min(255, max(0, r * scaler));
+    return result;
+}
+
+pixel pixel::operator/(const int& scaler)
+{
+    pixel result;
+    result.b = min(255, max(0, b / scaler));
+    result.g = min(255, max(0, g / scaler));
+    result.r = min(255, max(0, r / scaler));
+    return result;
+}
+
 class Bitmap_cpp
 {
 public:
@@ -57,6 +98,7 @@ public:
     void InvertColor();
     void mix_with(const Bitmap_cpp& other, const double& ratio = 0.5);
     void ZoomIn_FirstOrder(int scale = 2);
+    void ZoomIn_Bilinear(int scale = 2);
 
     // Operators
     Bitmap_cpp operator+(const Bitmap_cpp& other);
@@ -230,9 +272,11 @@ void Bitmap_cpp::ZoomIn_FirstOrder(int scale)
             int w0 = y - y0;
             int w1 = y1 - y;
 
-            new_data[x][y].r = (w1 * new_data[x][y0].r + w0 * new_data[x][y1].r) / (w0 + w1);
-            new_data[x][y].g = (w1 * new_data[x][y0].g + w0 * new_data[x][y1].g) / (w0 + w1);
-            new_data[x][y].b = (w1 * new_data[x][y0].b + w0 * new_data[x][y1].b) / (w0 + w1);
+            pixel temp(
+                (w1 * new_data[x][y0].r + w0 * new_data[x][y1].r) / (w0 + w1), 
+                (w1 * new_data[x][y0].g + w0 * new_data[x][y1].g) / (w0 + w1), 
+                (w1 * new_data[x][y0].b + w0 * new_data[x][y1].b) / (w0 + w1));
+            new_data[x][y] = temp;
         }
     }
 
@@ -253,9 +297,66 @@ void Bitmap_cpp::ZoomIn_FirstOrder(int scale)
             int w0 = x - x0;
             int w1 = x1 - x;
 
-            new_data[x][y].r = (w1 * new_data[x0][y].r + w0 * new_data[x1][y].r) / (w0 + w1);
-            new_data[x][y].g = (w1 * new_data[x0][y].g + w0 * new_data[x1][y].g) / (w0 + w1);
-            new_data[x][y].b = (w1 * new_data[x0][y].b + w0 * new_data[x1][y].b) / (w0 + w1);
+            pixel temp(
+                (w1 * new_data[x0][y].r + w0 * new_data[x1][y].r) / (w0 + w1), 
+                (w1 * new_data[x0][y].g + w0 * new_data[x1][y].g) / (w0 + w1), 
+                (w1 * new_data[x0][y].b + w0 * new_data[x1][y].b) / (w0 + w1));
+            new_data[x][y] = temp;
+        }
+    }
+    data = new_data;
+    info_header.width *= scale;
+    info_header.height *= scale;
+}
+
+void Bitmap_cpp::ZoomIn_Bilinear(int scale)
+{
+    vector<vector<pixel>> new_data(info_header.height * scale, vector<pixel>(info_header.width * scale));
+    for (int x = 0; x < info_header.height; x++)
+        for (int y = 0; y < info_header.width; y++)
+            new_data[x * scale][y * scale] = data[x][y];
+    
+    for (int x = 0; x < (info_header.height * scale); x++)
+    {
+        for (int y = 0; y < (info_header.width * scale); y++)
+        {
+            if (x % scale == 0 && y % scale == 0)
+                continue;
+            if (x >= (info_header.height * scale) - (scale - 1))
+            {
+                new_data[x][y] = new_data[x - 1][y];
+                continue;
+            }
+            if (y >= (info_header.width * scale) - (scale - 1))
+            {
+                new_data[x][y] = new_data[x][y - 1];
+                continue;
+            }
+
+            int x0 = (x / scale) * scale;
+            int x1 = min(x0 + scale, info_header.height * scale - 1);
+            int x_ratio0 = x - x0;
+            int x_ratio1 = x1 - x;
+
+            int y0 = (y / scale) * scale;
+            int y1 = min(y0 + scale, info_header.width * scale - 1);
+            int y_ratio0 = y - y0;
+            int y_ratio1 = y1 - y;
+
+            int r0 = (y_ratio1 * new_data[x0][y0].r + y_ratio0 * new_data[x0][y1].r) / (y_ratio0 + y_ratio1);
+            int r1 = (y_ratio1 * new_data[x1][y0].r + y_ratio0 * new_data[x1][y1].r) / (y_ratio0 + y_ratio1);
+
+            int g0 = (y_ratio1 * new_data[x0][y0].g + y_ratio0 * new_data[x0][y1].g) / (y_ratio0 + y_ratio1);
+            int g1 = (y_ratio1 * new_data[x1][y0].g + y_ratio0 * new_data[x1][y1].g) / (y_ratio0 + y_ratio1);
+
+            int b0 = (y_ratio1 * new_data[x0][y0].b + y_ratio0 * new_data[x0][y1].b) / (y_ratio0 + y_ratio1);
+            int b1 = (y_ratio1 * new_data[x1][y0].b + y_ratio0 * new_data[x1][y1].b) / (y_ratio0 + y_ratio1);
+
+            pixel temp(
+                (x_ratio1 * r0 + x_ratio0 * r1) / (x_ratio0 + x_ratio1),
+                (x_ratio1 * g0 + x_ratio0 * g1) / (x_ratio0 + x_ratio1),
+                (x_ratio1 * b0 + x_ratio0 * b1) / (x_ratio0 + x_ratio1));
+            new_data[x][y] = temp;
         }
     }
     data = new_data;
@@ -270,14 +371,9 @@ Bitmap_cpp Bitmap_cpp::operator+(const Bitmap_cpp& other)
 
     Bitmap_cpp result = *this;
     for (int y = 0; y < info_header.height; y++)
-    {
         for (int x = 0; x < info_header.width; x++)
-        {
-            result.data[y][x].r = min(255, data[y][x].r + other.data[y][x].r);
-            result.data[y][x].g = min(255, data[y][x].g + other.data[y][x].g);
-            result.data[y][x].b = min(255, data[y][x].b + other.data[y][x].b);
-        }
-    }
+            result.data[y][x] = data[y][x] + other.data[y][x];
+
     return result;
 }
 
@@ -288,14 +384,9 @@ Bitmap_cpp Bitmap_cpp::operator-(const Bitmap_cpp& other)
 
     Bitmap_cpp result = *this;
     for (int y = 0; y < info_header.height; y++)
-    {
         for (int x = 0; x < info_header.width; x++)
-        {
-            result.data[y][x].r = max(0, data[y][x].r - other.data[y][x].r);
-            result.data[y][x].g = max(0, data[y][x].g - other.data[y][x].g);
-            result.data[y][x].b = max(0, data[y][x].b - other.data[y][x].b);
-        }
-    }
+            result.data[y][x] = data[y][x] - other.data[y][x];
+
     return result;
 }
 
@@ -303,14 +394,9 @@ Bitmap_cpp Bitmap_cpp::operator*(const int& scaler)
 {
     Bitmap_cpp result = *this;
     for (int y = 0; y < info_header.height; y++)
-    {
         for (int x = 0; x < info_header.width; x++)
-        {
-            result.data[y][x].r = min(255, max(0, data[y][x].r * scaler));
-            result.data[y][x].g = min(255, max(0, data[y][x].g * scaler));
-            result.data[y][x].b = min(255, max(0, data[y][x].b * scaler));
-        }
-    }
+            result.data[y][x] = data[y][x] * scaler;
+
     return result;
 }
 
@@ -318,14 +404,9 @@ Bitmap_cpp Bitmap_cpp::operator/(const int& scaler)
 {
     Bitmap_cpp result = *this;
     for (int y = 0; y < info_header.height; y++)
-    {
         for (int x = 0; x < info_header.width; x++)
-        {
-            result.data[y][x].r = min(255, max(0, data[y][x].r / scaler));
-            result.data[y][x].g = min(255, max(0, data[y][x].g / scaler));
-            result.data[y][x].b = min(255, max(0, data[y][x].b / scaler));
-        }
-    }
+            result.data[y][x] = data[y][x] / scaler;
+
     return result;
 }
 
