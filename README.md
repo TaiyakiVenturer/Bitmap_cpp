@@ -15,7 +15,7 @@
 
 ## 使用方法
 
-## 1. 讀取方式
+### 1. 讀取方式
 ```cpp
 #include "Bitmap_cpp.hpp"
 
@@ -27,7 +27,7 @@ Bitmap_cpp image;
 image.LoadBmp("Bitmap FilePath");
 ```
 
-## 2. 輸出/轉換方式
+### 2. 輸出/轉換方式
 ```cpp
 // 使用轉型運算子
 Bitmap^ bmp = static_cast<Bitmap^>(image);
