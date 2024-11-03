@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+
+# Debug files
+CompareTest.cpp
+test.cpp
