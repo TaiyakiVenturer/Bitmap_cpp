@@ -1,4 +1,4 @@
-# Bitmap Image Processing Library
+# Bitmap C++ Library
 
 簡單的 BMP 圖檔處理程式庫，用來配合 Visual Studio C++/CLI 專案使用，
 只使用基礎的標準庫，以減少對於外部開發環境的依賴，
