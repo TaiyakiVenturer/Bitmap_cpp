@@ -46,15 +46,15 @@ struct pixel
 
 pixel::pixel(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
 {
-    int r = min(255, max(0, static_cast<int>(r)));
-    int g = min(255, max(0, static_cast<int>(g)));
-    int b = min(255, max(0, static_cast<int>(b)));
-    int a = min(255, max(0, static_cast<int>(a)));
+    int _r = min(255, max(0, static_cast<int>(r)));
+    int _g = min(255, max(0, static_cast<int>(g)));
+    int _b = min(255, max(0, static_cast<int>(b)));
+    int _a = min(255, max(0, static_cast<int>(a)));
 
-    this->r = r;
-    this->g = g;
-    this->b = b;
-    this->a = a;
+    this->r = _r;
+    this->g = _g;
+    this->b = _b;
+    this->a = _a;
 }
 
 pixel pixel::operator+(const pixel& other)
@@ -152,16 +152,16 @@ void Bitmap_cpp::LoadBmp(string file_path)
             data.resize(info_header.height);
             vector<unsigned char> row_data(info_header.width * 3);
             
-            for (int y = 0; y < info_header.height; y++)
+            for (int x = 0; x < info_header.height; x++)
             {
-                data[y].resize(info_header.width);
+                data[x].resize(info_header.width);
                 file.read(reinterpret_cast<char*>(row_data.data()), info_header.width * 3);
                 
-                for (int x = 0; x < info_header.width; x++)
+                for (int y = 0; y < info_header.width; y++)
                 {
-                    data[y][x].b = row_data[x * 3];
-                    data[y][x].g = row_data[x * 3 + 1];
-                    data[y][x].r = row_data[x * 3 + 2];
+                    data[x][y].b = row_data[y * 3];
+                    data[x][y].g = row_data[y * 3 + 1];
+                    data[x][y].r = row_data[y * 3 + 2];
                 }
                 
                 if (padding > 0)
@@ -208,12 +208,12 @@ void Bitmap_cpp::Resize(int width, int height, float ori_x, float ori_y)
     if (info_header.height * ori_y + height > info_header.height)
         ori_y = 0.0;
 
-    int ori_x_ = info_header.width * ori_x;
-    int ori_y_ = info_header.height * ori_y;
+    int ori_x_ = info_header.height * ori_x;
+    int ori_y_ = info_header.width * ori_y;
     vector<vector<pixel>> new_data(height, vector<pixel>(width));
-    for (int y = 0; y < height; y++)
-        for (int x = 0; x < width; x++)
-            new_data[y][x] = data[ori_y_ + y][ori_x_ + x];
+    for (int x = 0; x < height; x++)
+        for (int y = 0; y < width; y++)
+            new_data[x][y] = data[ori_x_ + x][ori_y_ + y];
 
     data = new_data;
     info_header.width = width;
@@ -250,13 +250,13 @@ void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const double& ratio)
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
-    for (int y = 0; y < info_header.height; y++)
+    for (int x = 0; x < info_header.height; x++)
     {
-        for (int x = 0; x < info_header.width; x++)
+        for (int y = 0; y < info_header.width; y++)
         {
-            data[y][x].r = data[y][x].r * (1 - ratio) + other.data[y][x].r * ratio;
-            data[y][x].g = data[y][x].g * (1 - ratio) + other.data[y][x].g * ratio;
-            data[y][x].b = data[y][x].b * (1 - ratio) + other.data[y][x].b * ratio;
+            data[x][y].r = data[x][y].r * (1 - ratio) + other.data[x][y].r * ratio;
+            data[x][y].g = data[x][y].g * (1 - ratio) + other.data[x][y].g * ratio;
+            data[x][y].b = data[x][y].b * (1 - ratio) + other.data[x][y].b * ratio;
         }
     }
 }
@@ -383,9 +383,9 @@ Bitmap_cpp Bitmap_cpp::operator+(const Bitmap_cpp& other)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
     Bitmap_cpp result = *this;
-    for (int y = 0; y < info_header.height; y++)
-        for (int x = 0; x < info_header.width; x++)
-            result.data[y][x] = data[y][x] + other.data[y][x];
+    for (int x = 0; x < info_header.height; x++)
+        for (int y = 0; y < info_header.width; y++)
+            result.data[x][y] = data[x][y] + other.data[x][y];
 
     return result;
 }
@@ -396,9 +396,9 @@ Bitmap_cpp Bitmap_cpp::operator-(const Bitmap_cpp& other)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
     Bitmap_cpp result = *this;
-    for (int y = 0; y < info_header.height; y++)
-        for (int x = 0; x < info_header.width; x++)
-            result.data[y][x] = data[y][x] - other.data[y][x];
+    for (int x = 0; x < info_header.height; x++)
+        for (int y = 0; y < info_header.width; y++)
+            result.data[x][y] = data[x][y] - other.data[x][y];
 
     return result;
 }
@@ -406,9 +406,9 @@ Bitmap_cpp Bitmap_cpp::operator-(const Bitmap_cpp& other)
 Bitmap_cpp Bitmap_cpp::operator*(const int& scaler)
 {
     Bitmap_cpp result = *this;
-    for (int y = 0; y < info_header.height; y++)
-        for (int x = 0; x < info_header.width; x++)
-            result.data[y][x] = data[y][x] * scaler;
+    for (int x = 0; x < info_header.height; x++)
+        for (int y = 0; y < info_header.width; y++)
+            result.data[x][y] = data[x][y] * scaler;
 
     return result;
 }
@@ -416,9 +416,9 @@ Bitmap_cpp Bitmap_cpp::operator*(const int& scaler)
 Bitmap_cpp Bitmap_cpp::operator/(const int& scaler)
 {
     Bitmap_cpp result = *this;
-    for (int y = 0; y < info_header.height; y++)
-        for (int x = 0; x < info_header.width; x++)
-            result.data[y][x] = data[y][x] / scaler;
+    for (int x = 0; x < info_header.height; x++)
+        for (int y = 0; y < info_header.width; y++)
+            result.data[x][y] = data[x][y] / scaler;
 
     return result;
 }
@@ -428,13 +428,13 @@ void Bitmap_cpp::and_with(const Bitmap_cpp& other)
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
-    for (int y = 0; y < info_header.height; y++)
+    for (int x = 0; x < info_header.height; x++)
     {
-        for (int x = 0; x < info_header.width; x++)
+        for (int y = 0; y < info_header.width; y++)
         {
-            data[y][x].r &= other.data[y][x].r;
-            data[y][x].g &= other.data[y][x].g;
-            data[y][x].b &= other.data[y][x].b;
+            data[x][y].r &= other.data[x][y].r;
+            data[x][y].g &= other.data[x][y].g;
+            data[x][y].b &= other.data[x][y].b;
         }
     }
 }
@@ -444,13 +444,13 @@ void Bitmap_cpp::or_with(const Bitmap_cpp& other)
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
-    for (int y = 0; y < info_header.height; y++)
+    for (int x = 0; x < info_header.height; x++)
     {
-        for (int x = 0; x < info_header.width; x++)
+        for (int y = 0; y < info_header.width; y++)
         {
-            data[y][x].r |= other.data[y][x].r;
-            data[y][x].g |= other.data[y][x].g;
-            data[y][x].b |= other.data[y][x].b;
+            data[x][y].r |= other.data[x][y].r;
+            data[x][y].g |= other.data[x][y].g;
+            data[x][y].b |= other.data[x][y].b;
         }
     }
 }
@@ -460,13 +460,13 @@ void Bitmap_cpp::xor_with(const Bitmap_cpp& other)
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
-    for (int y = 0; y < info_header.height; y++)
+    for (int x = 0; x < info_header.height; x++)
     {
-        for (int x = 0; x < info_header.width; x++)
+        for (int y = 0; y < info_header.width; y++)
         {
-            data[y][x].r ^= other.data[y][x].r;
-            data[y][x].g ^= other.data[y][x].g;
-            data[y][x].b ^= other.data[y][x].b;
+            data[x][y].r ^= other.data[x][y].r;
+            data[x][y].g ^= other.data[x][y].g;
+            data[x][y].b ^= other.data[x][y].b;
         }
     }
 }
@@ -500,16 +500,16 @@ System::Drawing::Bitmap^ Bitmap_cpp::toBitmap()
     vector<unsigned char> raw_data(stride * info_header.height);
     
     // 排列像素數據
-    for (int y = 0; y < info_header.height; y++) 
+    for (int x = 0; x < info_header.height; x++)
     {
-        for (int x = 0; x < info_header.width; x++) 
+        for (int y = 0; y < info_header.width; y++)
         {
-            int dest_row = info_header.height - 1 - y;
-            int dest_index = dest_row * stride + x * 3;
+            int dest_row = info_header.height - 1 - x;
+            int dest_index = dest_row * stride + y * 3;
             
-            raw_data[dest_index] = data[y][x].b;
-            raw_data[dest_index + 1] = data[y][x].g;
-            raw_data[dest_index + 2] = data[y][x].r;
+            raw_data[dest_index] = data[x][y].b;
+            raw_data[dest_index + 1] = data[x][y].g;
+            raw_data[dest_index + 2] = data[x][y].r;
         }
     }
 
