@@ -95,11 +95,13 @@ pixel pixel::operator/(const int& scaler)
 
 class Bitmap_cpp
 {
-public:
+private:
     bmp_header header;
     bmp_info_header info_header;
     vector<vector<pixel>> data;
 
+    void CheckValid() const;
+public:
     Bitmap_cpp() = default;
     ~Bitmap_cpp();
     Bitmap_cpp(string file_path);
@@ -144,6 +146,10 @@ void Bitmap_cpp::LoadBmp(string file_path)
         throw runtime_error("Error: file is not a Bitmap file");
 
     file.read(reinterpret_cast<char*>(&info_header), sizeof(bmp_info_header));
+    if (info_header.bit_count != 24 && info_header.bit_count != 32)
+        throw runtime_error("Error: unsupported bit count");
+    if (info_header.height <= 0 || info_header.width <= 0)
+        throw runtime_error("Error: invalid image size");
 
     switch(info_header.bit_count)
     {
@@ -199,8 +205,17 @@ Bitmap_cpp::~Bitmap_cpp()
     data.clear();
 }
 
+void Bitmap_cpp::CheckValid() const
+{
+    if (data.empty())
+        throw runtime_error("Error: image data is empty");
+    if (info_header.width <= 0 || info_header.height <= 0)
+        throw runtime_error("Error: invalid image size");
+}
+
 void Bitmap_cpp::Resize(int width, int height, int start_x, int start_y)
 {
+    CheckValid();
     height = min(height, info_header.height);
     width = min(width, info_header.width);
     int new_start_x = start_x * height / info_header.height;
@@ -222,6 +237,7 @@ void Bitmap_cpp::Resize(int width, int height, int start_x, int start_y)
 
 void Bitmap_cpp::TurnGray()
 {
+    CheckValid();
     for (auto& row : data)
     {
         for (auto& p : row)
@@ -234,6 +250,7 @@ void Bitmap_cpp::TurnGray()
 
 void Bitmap_cpp::InvertColor()
 {
+    CheckValid();
     for (auto& row : data)
     {
         for (auto& p : row)
@@ -247,6 +264,7 @@ void Bitmap_cpp::InvertColor()
 
 void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const double& ratio)
 {
+    CheckValid();
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
@@ -263,6 +281,7 @@ void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const double& ratio)
 
 void Bitmap_cpp::ZoomIn_FirstOrder(int scale)
 {
+    CheckValid();
     vector<vector<pixel>> new_data(info_header.height * scale, vector<pixel>(info_header.width * scale));
     for (int x = 0; x < info_header.height; x++)
         for (int y = 0; y < info_header.width; y++)
@@ -326,6 +345,7 @@ void Bitmap_cpp::ZoomIn_FirstOrder(int scale)
 
 void Bitmap_cpp::ZoomIn_Bilinear(int scale)
 {
+    CheckValid();
     vector<vector<pixel>> new_data(info_header.height * scale, vector<pixel>(info_header.width * scale));
     for (int x = 0; x < info_header.height; x++)
         for (int y = 0; y < info_header.width; y++)
@@ -383,6 +403,7 @@ void Bitmap_cpp::ZoomIn_Bilinear(int scale)
 
 void Bitmap_cpp::ZoomOut(int scale)
 {
+    CheckValid();
     vector<vector<pixel>> new_data(info_header.height / scale, vector<pixel>(info_header.width / scale));
     for (int x = 0; x < info_header.height / scale; x++)
     {
@@ -413,6 +434,7 @@ void Bitmap_cpp::ZoomOut(int scale)
 
 Bitmap_cpp Bitmap_cpp::operator+(const Bitmap_cpp& other)
 {
+    CheckValid();
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
@@ -426,6 +448,7 @@ Bitmap_cpp Bitmap_cpp::operator+(const Bitmap_cpp& other)
 
 Bitmap_cpp Bitmap_cpp::operator-(const Bitmap_cpp& other)
 {
+    CheckValid();
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
@@ -439,6 +462,7 @@ Bitmap_cpp Bitmap_cpp::operator-(const Bitmap_cpp& other)
 
 Bitmap_cpp Bitmap_cpp::operator*(const int& scaler)
 {
+    CheckValid();
     Bitmap_cpp result = *this;
     for (int x = 0; x < info_header.height; x++)
         for (int y = 0; y < info_header.width; y++)
@@ -449,6 +473,7 @@ Bitmap_cpp Bitmap_cpp::operator*(const int& scaler)
 
 Bitmap_cpp Bitmap_cpp::operator/(const int& scaler)
 {
+    CheckValid();
     Bitmap_cpp result = *this;
     for (int x = 0; x < info_header.height; x++)
         for (int y = 0; y < info_header.width; y++)
@@ -459,6 +484,7 @@ Bitmap_cpp Bitmap_cpp::operator/(const int& scaler)
 
 void Bitmap_cpp::and_with(const Bitmap_cpp& other)
 {
+    CheckValid();
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
@@ -475,6 +501,7 @@ void Bitmap_cpp::and_with(const Bitmap_cpp& other)
 
 void Bitmap_cpp::or_with(const Bitmap_cpp& other)
 {
+    CheckValid();
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
@@ -491,6 +518,7 @@ void Bitmap_cpp::or_with(const Bitmap_cpp& other)
 
 void Bitmap_cpp::xor_with(const Bitmap_cpp& other)
 {
+    CheckValid();
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
         throw runtime_error("Error: image size error, " + to_string(info_header.width) + "x" + to_string(info_header.height) + "(origin) vs " + to_string(other.info_header.width) + "x" + to_string(other.info_header.height) + "(other)");
 
@@ -529,6 +557,7 @@ Bitmap_cpp::operator System::Drawing::Bitmap^()
 // 定義轉換運算子
 System::Drawing::Bitmap^ Bitmap_cpp::toBitmap()
 {
+    CheckValid();
     // 準備數據
     int stride = ((info_header.width * 3 + 3) / 4) * 4;
     vector<unsigned char> raw_data(stride * info_header.height);
