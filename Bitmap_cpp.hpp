@@ -95,24 +95,24 @@ pixel pixel::operator/(const int& scaler)
 
 class Bitmap_cpp
 {
-private:
+public:
     bmp_header header;
     bmp_info_header info_header;
     vector<vector<pixel>> data;
-
-    void CheckValid() const;
-public:
     Bitmap_cpp() = default;
     ~Bitmap_cpp();
     Bitmap_cpp(string file_path);
     void LoadBmp(string file_path);
 
     bool empty() const { return data.empty(); }
+    void CheckValid() const;
     void Resize(int width, int height, int start_x = 0, int start_y = 0);
-    void TurnGray();
+    void toGray();
     void InvertColor();
     void mix_with(const Bitmap_cpp& other, const double& ratio = 0.5);
+    void ZoomIn_ZeroOrder(int scale = 2);
     void ZoomIn_FirstOrder(int scale = 2);
+    void ZoomIn_Compare(int scale = 2);
     void ZoomIn_Bilinear(int scale = 2);
     void ZoomOut(int scale = 2);
 
@@ -213,29 +213,28 @@ void Bitmap_cpp::CheckValid() const
         throw runtime_error("Error: invalid image size");
 }
 
-void Bitmap_cpp::Resize(int width, int height, int start_x, int start_y)
+void Bitmap_cpp::Resize(int width, int height, int start_y, int start_x)
 {
     CheckValid();
-    height = min(height, info_header.height);
     width = min(width, info_header.width);
-    int new_start_x = start_x * height / info_header.height;
-    int new_start_y = start_y * width / info_header.width;
-    if (new_start_x > info_header.height)
-        new_start_x = 0;
-    if (new_start_y > info_header.width)
-        new_start_y = 0;
+    height = min(height, info_header.height);
 
+    start_x = info_header.height - start_x;
+    if (start_x + height > info_header.height)
+        start_x = max(0, info_header.height - height);
+    if (start_y + width > info_header.width)
+        start_y = max(0, info_header.width - width);
     vector<vector<pixel>> new_data(height, vector<pixel>(width));
     for (int x = 0; x < height; x++)
         for (int y = 0; y < width; y++)
-            new_data[x][y] = data[new_start_x + x][new_start_y + y];
+            new_data[x][y] = data[start_x + x][start_y + y];
 
     data = new_data;
     info_header.width = width;
     info_header.height = height;
 }
 
-void Bitmap_cpp::TurnGray()
+void Bitmap_cpp::toGray()
 {
     CheckValid();
     for (auto& row : data)
@@ -279,6 +278,29 @@ void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const double& ratio)
     }
 }
 
+void Bitmap_cpp::ZoomIn_ZeroOrder(int scale)
+{
+    CheckValid();
+    vector<vector<pixel>> new_data(info_header.height * scale, vector<pixel>(info_header.width * scale));
+    for (int x = 0; x < info_header.height; x++)
+        for (int y = 0; y < info_header.width; y++)
+            new_data[x * scale][y * scale] = data[x][y];
+
+    for (int x = 0; x < (info_header.height * scale); x++)
+    {
+        for (int y = 0; y < (info_header.width * scale); y++)
+        {
+            if (x % scale == 0 && y % scale == 0)
+                continue;
+            
+            new_data[x][y] = data[x / scale][y / scale];
+        }
+    }
+    data = new_data;
+    info_header.width *= scale;
+    info_header.height *= scale;
+}
+
 void Bitmap_cpp::ZoomIn_FirstOrder(int scale)
 {
     CheckValid();
@@ -305,11 +327,10 @@ void Bitmap_cpp::ZoomIn_FirstOrder(int scale)
             int w1 = y1 - y;
             int w = w0 + w1;
 
-            pixel temp(
+            new_data[x][y] = pixel(
                 (w1 * new_data[x][y0].r + w0 * new_data[x][y1].r) / w, 
                 (w1 * new_data[x][y0].g + w0 * new_data[x][y1].g) / w, 
                 (w1 * new_data[x][y0].b + w0 * new_data[x][y1].b) / w);
-            new_data[x][y] = temp;
         }
     }
 
@@ -331,11 +352,58 @@ void Bitmap_cpp::ZoomIn_FirstOrder(int scale)
             int w1 = x1 - x;
             int w = w0 + w1;
 
-            pixel temp(
+            new_data[x][y] = pixel(
                 (w1 * new_data[x0][y].r + w0 * new_data[x1][y].r) / w, 
                 (w1 * new_data[x0][y].g + w0 * new_data[x1][y].g) / w, 
                 (w1 * new_data[x0][y].b + w0 * new_data[x1][y].b) / w);
-            new_data[x][y] = temp;
+        }
+    }
+    data = new_data;
+    info_header.width *= scale;
+    info_header.height *= scale;
+}
+
+void Bitmap_cpp::ZoomIn_Compare(int scale)
+{
+    CheckValid();
+    vector<vector<pixel>> new_data(info_header.height * scale, vector<pixel>(info_header.width * scale));
+    for (int x = 0; x < info_header.height; x++)
+        for (int y = 0; y < info_header.width; y++)
+            new_data[x * scale][y * scale] = data[x][y];
+    
+    for (int x = 0; x < (info_header.height * scale) - (scale - 1); x += scale)
+    {
+        for (int y = 0; y < (info_header.width * scale); y++)
+        {
+            if (x % scale == 0 && y % scale == 0)
+                continue;
+            if (y >= (info_header.width * scale) - (scale - 1))
+            {
+                new_data[x][y] = new_data[x][y - 1];
+                continue;
+            }
+            
+            int y0 = (y / scale) * scale;
+            int y1 = min(y0 + scale, info_header.width * scale - 1);
+            int w0 = y - y0;
+            int w1 = y1 - y;
+            int w = w0 + w1;
+
+            new_data[x][y] = pixel(
+                (w1 * new_data[x][y0].r + w0 * new_data[x][y1].r) / w, 
+                (w1 * new_data[x][y0].g + w0 * new_data[x][y1].g) / w, 
+                (w1 * new_data[x][y0].b + w0 * new_data[x][y1].b) / w);
+        }
+    }
+    
+    for (int x = 0; x < (info_header.height * scale); x++)
+    {
+        for (int y = 0; y < (info_header.width * scale); y++)
+        {
+            if (x % scale == 0 && y % scale == 0)
+                continue;
+            
+            new_data[x][y] = data[x / scale][y / scale];
         }
     }
     data = new_data;
@@ -380,20 +448,19 @@ void Bitmap_cpp::ZoomIn_Bilinear(int scale)
             int y_ratio1 = y1 - y;
             int y_ratio = y_ratio0 + y_ratio1;
 
-            int r0 = (y_ratio1 * new_data[x0][y0].r + y_ratio0 * new_data[x0][y1].r) / y_ratio;
-            int r1 = (y_ratio1 * new_data[x1][y0].r + y_ratio0 * new_data[x1][y1].r) / y_ratio;
+            float r0 = (y_ratio1 * new_data[x0][y0].r + y_ratio0 * new_data[x0][y1].r) / y_ratio;
+            float r1 = (y_ratio1 * new_data[x1][y0].r + y_ratio0 * new_data[x1][y1].r) / y_ratio;
 
-            int g0 = (y_ratio1 * new_data[x0][y0].g + y_ratio0 * new_data[x0][y1].g) / y_ratio;
-            int g1 = (y_ratio1 * new_data[x1][y0].g + y_ratio0 * new_data[x1][y1].g) / y_ratio;
+            float g0 = (y_ratio1 * new_data[x0][y0].g + y_ratio0 * new_data[x0][y1].g) / y_ratio;
+            float g1 = (y_ratio1 * new_data[x1][y0].g + y_ratio0 * new_data[x1][y1].g) / y_ratio;
 
-            int b0 = (y_ratio1 * new_data[x0][y0].b + y_ratio0 * new_data[x0][y1].b) / y_ratio;
-            int b1 = (y_ratio1 * new_data[x1][y0].b + y_ratio0 * new_data[x1][y1].b) / y_ratio;
+            float b0 = (y_ratio1 * new_data[x0][y0].b + y_ratio0 * new_data[x0][y1].b) / y_ratio;
+            float b1 = (y_ratio1 * new_data[x1][y0].b + y_ratio0 * new_data[x1][y1].b) / y_ratio;
 
-            pixel temp(
+            new_data[x][y] = pixel(
                 (x_ratio1 * r0 + x_ratio0 * r1) / x_ratio,
                 (x_ratio1 * g0 + x_ratio0 * g1) / x_ratio,
                 (x_ratio1 * b0 + x_ratio0 * b1) / x_ratio);
-            new_data[x][y] = temp;
         }
     }
     data = new_data;
