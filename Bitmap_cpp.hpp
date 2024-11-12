@@ -122,6 +122,8 @@ public:
     void ZoomIn_Compare(int scale = 2);
     void ZoomIn_Bilinear(int scale = 2);
     void ZoomOut(int scale = 2);
+    void HistogramEqualization_Global();
+    void HistogramEqualization_Local(int block_size = 7);
 
     // Operators
     Bitmap_cpp operator+(const Bitmap_cpp& other);
@@ -466,13 +468,10 @@ void Bitmap_cpp::ZoomIn_Compare(int scale)
     
     for (int x = 0; x < (info_header.height * scale); x++)
     {
+        if (x % scale == 0)
+            continue;
         for (int y = 0; y < (info_header.width * scale); y++)
-        {
-            if (x % scale == 0 && y % scale == 0)
-                continue;
-            
-            new_data[x][y] = data[x / scale][y / scale];
-        }
+            new_data[x][y] = new_data[x - 1][y];
     }
     data = new_data;
     info_header.width *= scale;
@@ -567,6 +566,101 @@ void Bitmap_cpp::ZoomOut(int scale)
     info_header.height /= scale;
 }
 
+void Bitmap_cpp::HistogramEqualization_Global()
+{
+    CheckValid();
+    if (data[0][0].r != data[0][0].g || data[0][0].r != data[0][0].b)
+        throw runtime_error("Error: image is not a gray image");
+
+    int histogram[256] = {0};
+    for (auto& row : data)
+        for (auto& p : row)
+            histogram[p.r]++;
+
+    int cdf[256] = {0};
+    cdf[0] = histogram[0];
+    for (int i = 1; i < 256; i++)
+        cdf[i] = cdf[i - 1] + histogram[i];
+    
+    int min_cdf = cdf[0];
+    for (int i = 0; i < 256; i++)
+    {
+        if (histogram[i] > 0)
+        {
+            min_cdf = cdf[i];
+            break;
+        }
+    }
+
+    int totel_pixel = info_header.width * info_header.height;
+    if (totel_pixel == min_cdf)
+        return;
+
+    for (auto& row : data)
+    {
+        for (auto& p : row)
+        {
+            int new_value = (cdf[p.r] - min_cdf) * 255 / (totel_pixel - min_cdf);
+            p.r = p.g = p.b = new_value;
+        }
+    }
+}
+
+void Bitmap_cpp::HistogramEqualization_Local(int block_size)
+{
+    CheckValid();
+    if (data[0][0].r != data[0][0].g || data[0][0].r != data[0][0].b)
+        throw runtime_error("Error: image is not a gray image");
+    if (block_size <= 0)
+        throw runtime_error("Error: block size must be greater than 0");
+
+    int padding = block_size / 2 + block_size % 2 - 1;
+    int block_adjustment = 1 - block_size % 2;
+    vector<vector<pixel>> new_data(info_header.height, vector<pixel>(info_header.width));
+    for (int x = padding; x < info_header.height - padding - block_adjustment; x++)
+    {
+        int histogram[256] = {0};
+        for (int i = -padding; i <= padding + block_adjustment; i++)
+            for (int j = -padding; j <= padding + block_adjustment; j++)
+                histogram[data[x + i][padding + j].r]++;
+
+        for (int y = padding; y <= info_header.width - padding - block_adjustment; y++)
+        {
+            if (y > padding)
+            {
+                for (int i = -padding; i <= padding + block_adjustment; i++)
+                {
+                    histogram[data[x + i][y - padding - 1].r]--;
+                    histogram[data[x + i][y + padding + block_adjustment].r]++;
+                }
+            }
+
+            int cdf[256] = {0};
+            cdf[0] = histogram[0];
+            for (int i = 1; i < 256; i++)
+                cdf[i] = cdf[i - 1] + histogram[i];
+            
+            int min_cdf = cdf[0];
+            for (int i = 0; i < 256; i++)
+            {
+                if (histogram[i] > 0)
+                {
+                    min_cdf = cdf[i];
+                    break;
+                }
+            }
+
+            int totel_pixel = (block_size + block_adjustment) * (block_size + block_adjustment);
+            if (totel_pixel == min_cdf)
+                continue;
+
+            int new_value = (cdf[data[x][y].r] - min_cdf) * 255 / (totel_pixel - min_cdf);
+            new_data[x][y].r = new_data[x][y].g = new_data[x][y].b = new_value;
+        }
+    }
+    data = new_data;
+}
+
 Bitmap_cpp Bitmap_cpp::operator+(const Bitmap_cpp& other)
 {
     CheckValid();
@@ -609,6 +703,9 @@ Bitmap_cpp Bitmap_cpp::operator*(const int& scaler)
 Bitmap_cpp Bitmap_cpp::operator/(const int& scaler)
 {
     CheckValid();
+    if (scaler == 0)
+        throw runtime_error("Error: division by zero");
+
     Bitmap_cpp result = *this;
     for (int x = 0; x < info_header.height; x++)
         for (int y = 0; y < info_header.width; y++)
