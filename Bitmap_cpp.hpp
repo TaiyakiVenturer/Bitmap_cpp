@@ -96,19 +96,26 @@ pixel pixel::operator/(const int& scaler)
 class Bitmap_cpp
 {
 public:
+    // Data
     bmp_header header;
     bmp_info_header info_header;
     vector<vector<pixel>> data;
+
+    // Constructors
     Bitmap_cpp() = default;
     ~Bitmap_cpp();
     Bitmap_cpp(string file_path);
     void LoadBmp(string file_path);
+    void SaveBmp(string file_path);
 
+    // Basic functions
     bool empty() const { return data.empty(); }
     void CheckValid() const;
     void Resize(int width, int height, int start_x = 0, int start_y = 0);
     void toGray();
     void InvertColor();
+
+    // Image processing
     void mix_with(const Bitmap_cpp& other, const double& ratio = 0.5);
     void ZoomIn_ZeroOrder(int scale = 2);
     void ZoomIn_FirstOrder(int scale = 2);
@@ -135,6 +142,16 @@ public:
     #endif
 };
 
+Bitmap_cpp::Bitmap_cpp(string file_path)
+{
+    LoadBmp(file_path);
+}
+
+Bitmap_cpp::~Bitmap_cpp()
+{
+    data.clear();
+}
+
 void Bitmap_cpp::LoadBmp(string file_path)
 {
     ifstream file(file_path, ios::binary);
@@ -155,6 +172,10 @@ void Bitmap_cpp::LoadBmp(string file_path)
     {
         case 24:
         {
+            #ifndef __cplusplus_cli
+            cout << "It's a 24-bit Bitmap file" << endl;
+            #endif
+
             int padding = (4 - (info_header.width * 3) % 4) % 4;
             data.resize(info_header.height);
             vector<unsigned char> row_data(info_header.width * 3);
@@ -163,28 +184,30 @@ void Bitmap_cpp::LoadBmp(string file_path)
             {
                 data[x].resize(info_header.width);
                 file.read(reinterpret_cast<char*>(row_data.data()), info_header.width * 3);
-                
                 for (int y = 0; y < info_header.width; y++)
                 {
                     data[x][y].b = row_data[y * 3];
                     data[x][y].g = row_data[y * 3 + 1];
                     data[x][y].r = row_data[y * 3 + 2];
                 }
+
                 if (padding > 0)
                     file.seekg(padding, ios::cur);
             }
-            // cout << "It's a 24-bit Bitmap file" << endl;
             break;
         }
         case 32:
         {
+            #ifndef __cplusplus_cli
+            cout << "It's a 32-bit Bitmap file" << endl;
+            #endif
+
             data.resize(info_header.height);
             for (auto& row : data)
             {
                 row.resize(info_header.width);
                 file.read(reinterpret_cast<char*>(row.data()), info_header.width * 4);
             }
-            // cout << "It's a 32-bit Bitmap file" << endl;
             break;
         }
         default:
@@ -195,14 +218,59 @@ void Bitmap_cpp::LoadBmp(string file_path)
     file.close();
 }
 
-Bitmap_cpp::Bitmap_cpp(string file_path)
+void Bitmap_cpp::SaveBmp(string file_path)
 {
-    LoadBmp(file_path);
-}
+    CheckValid();
+    if (file_path.find(".bmp") == string::npos)
+        file_path += ".bmp";
 
-Bitmap_cpp::~Bitmap_cpp()
-{
-    data.clear();
+    ofstream file(file_path, ios::binary);
+    if (!file.is_open())
+        throw runtime_error("Error: Cannot create file");
+    
+    file.write(reinterpret_cast<char*>(&header), sizeof(bmp_header));
+    file.write(reinterpret_cast<char*>(&info_header), sizeof(bmp_info_header));
+
+    switch(info_header.bit_count)
+    {
+        case 24:
+        {
+            int padding = (4 - (info_header.width * 3) % 4) % 4;
+            vector<unsigned char> row_data(info_header.width * 3);
+            vector<unsigned char> padding_buffer(padding, 0);
+            for (int x = 0; x < info_header.height; x++)
+            {
+                for (int y = 0; y < info_header.width; y++)
+                {
+                    row_data[y * 3] = data[x][y].b;
+                    row_data[y * 3 + 1] = data[x][y].g;
+                    row_data[y * 3 + 2] = data[x][y].r;
+                }
+                file.write(reinterpret_cast<char*>(row_data.data()), info_header.width * 3);
+
+                if (padding > 0)
+                    file.write(reinterpret_cast<char*>(padding_buffer.data()), padding);
+            }
+            if (!file.good())
+                throw runtime_error("Error: failed to write 24-bit Bitmap file");
+            break;
+        }
+        case 32:
+        {
+            for (auto& row : data)
+                file.write(reinterpret_cast<char*>(row.data()), info_header.width * 4);
+            if (!file.good())
+                throw runtime_error("Error: failed to write 32-bit Bitmap file");
+            break;
+        }
+        default:
+        {
+            throw runtime_error("Error: unsupported bit count");
+        }
+    }
+    file.close();
+    if (!file.good())
+        throw runtime_error("Error: file write error");
 }
 
 void Bitmap_cpp::CheckValid() const
