@@ -28,10 +28,17 @@ image.LoadBmp("Bitmap FilePath");
 ```
 
 ### 2. 輸出/轉換方式
+C++/CLI專案轉換方式
 ```cpp
-// 使用轉型運算子
+// 使用轉型運算子轉換
 Bitmap^ bmp = static_cast<Bitmap^>(image);
 
-// 使用 toBitmap 函式
+// 使用 toBitmap 函式轉換
 Bitmap^ bmp = image.toBitmap();
+```
+
+純C++環境輸出方式
+```cpp
+// 使用 SaveBmp 函式存檔
+bmp.SaveBmp("Bitmap SavePath");
 ```
