@@ -1,8 +1,12 @@
 #pragma once
+
+#include <stdexcept>
 #include <vector>
 #include <string>
 #include <fstream>
 #include <iostream>
+#include <random>
+#include <algorithm>
 using namespace std;
 
 #pragma pack(push, 1)
@@ -105,6 +109,7 @@ public:
     Bitmap_cpp() = default;
     ~Bitmap_cpp();
     Bitmap_cpp(string file_path);
+    Bitmap_cpp(const Bitmap_cpp& other) = default;
     void LoadBmp(string file_path);
     void SaveBmp(string file_path);
 
@@ -114,16 +119,19 @@ public:
     void Resize(int width, int height, int start_x = 0, int start_y = 0);
     void toGray();
     void InvertColor();
+    void AddImpluseNoise(const int noise_ratio = 10, const float salt_ratio = 0.5, const float pepper_ratio = 0.5);
 
     // Image processing
     void mix_with(const Bitmap_cpp& other, const double& ratio = 0.5);
-    void ZoomIn_ZeroOrder(int scale = 2);
-    void ZoomIn_FirstOrder(int scale = 2);
-    void ZoomIn_Compare(int scale = 2);
-    void ZoomIn_Bilinear(int scale = 2);
-    void ZoomOut(int scale = 2);
+    void ZoomIn_ZeroOrder(const int scale = 2);
+    void ZoomIn_FirstOrder(const int scale = 2);
+    void ZoomIn_Compare(const int scale = 2);
+    void ZoomIn_Bilinear(const int scale = 2);
+    void ZoomOut(const int scale = 2);
     void HistogramEqualization_Global();
-    void HistogramEqualization_Local(int block_size = 7);
+    void HistogramEqualization_Local(const int block_size = 7);
+    void SpatialLowPassFilter(const int filter_size = 3);
+    void MedianFilter(const int filter_size = 3);
 
     // Operators
     Bitmap_cpp operator+(const Bitmap_cpp& other);
@@ -331,6 +339,24 @@ void Bitmap_cpp::InvertColor()
     }
 }
 
+void Bitmap_cpp::AddImpluseNoise(const int noise_ratio, const float salt_ratio, const float pepper_ratio)
+{
+    CheckValid();
+    if (noise_ratio < 0 || noise_ratio > 100)
+        throw invalid_argument("Error: noise ratio must be between 0 and 100");
+    
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_real_distribution<float> dis(0, 1);
+    float noise_ratio_f = noise_ratio / 100.0;
+    float salt_ratio_f = salt_ratio / (salt_ratio + pepper_ratio);
+
+    for (auto& row : data)
+        for (auto& p : row)
+            if (dis(gen) < noise_ratio_f)
+                p.r = p.g = p.b = dis(gen) > salt_ratio_f ? 255 : 0;
+}
+
 void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const double& ratio)
 {
     CheckValid();
@@ -348,7 +374,7 @@ void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const double& ratio)
     }
 }
 
-void Bitmap_cpp::ZoomIn_ZeroOrder(int scale)
+void Bitmap_cpp::ZoomIn_ZeroOrder(const int scale)
 {
     CheckValid();
     vector<vector<pixel>> new_data(info_header.height * scale, vector<pixel>(info_header.width * scale));
@@ -371,7 +397,7 @@ void Bitmap_cpp::ZoomIn_ZeroOrder(int scale)
     info_header.height *= scale;
 }
 
-void Bitmap_cpp::ZoomIn_FirstOrder(int scale)
+void Bitmap_cpp::ZoomIn_FirstOrder(const int scale)
 {
     CheckValid();
     vector<vector<pixel>> new_data(info_header.height * scale, vector<pixel>(info_header.width * scale));
@@ -433,7 +459,7 @@ void Bitmap_cpp::ZoomIn_FirstOrder(int scale)
     info_header.height *= scale;
 }
 
-void Bitmap_cpp::ZoomIn_Compare(int scale)
+void Bitmap_cpp::ZoomIn_Compare(const int scale)
 {
     CheckValid();
     vector<vector<pixel>> new_data(info_header.height * scale, vector<pixel>(info_header.width * scale));
@@ -478,7 +504,7 @@ void Bitmap_cpp::ZoomIn_Compare(int scale)
     info_header.height *= scale;
 }
 
-void Bitmap_cpp::ZoomIn_Bilinear(int scale)
+void Bitmap_cpp::ZoomIn_Bilinear(const int scale)
 {
     CheckValid();
     vector<vector<pixel>> new_data(info_header.height * scale, vector<pixel>(info_header.width * scale));
@@ -535,7 +561,7 @@ void Bitmap_cpp::ZoomIn_Bilinear(int scale)
     info_header.height *= scale;
 }
 
-void Bitmap_cpp::ZoomOut(int scale)
+void Bitmap_cpp::ZoomOut(const int scale)
 {
     CheckValid();
     vector<vector<pixel>> new_data(info_header.height / scale, vector<pixel>(info_header.width / scale));
@@ -606,13 +632,13 @@ void Bitmap_cpp::HistogramEqualization_Global()
     }
 }
 
-void Bitmap_cpp::HistogramEqualization_Local(int block_size)
+void Bitmap_cpp::HistogramEqualization_Local(const int block_size)
 {
     CheckValid();
     if (data[0][0].r != data[0][0].g || data[0][0].r != data[0][0].b)
         throw runtime_error("Error: image is not a gray image");
     if (block_size <= 0)
-        throw runtime_error("Error: block size must be greater than 0");
+        throw invalid_argument("Error: block size must be greater than 0");
 
     int padding = block_size / 2 + block_size % 2 - 1;
     int block_adjustment = 1 - block_size % 2;
@@ -624,7 +650,7 @@ void Bitmap_cpp::HistogramEqualization_Local(int block_size)
             for (int j = -padding; j <= padding + block_adjustment; j++)
                 histogram[data[x + i][padding + j].r]++;
 
-        for (int y = padding; y <= info_header.width - padding - block_adjustment; y++)
+        for (int y = padding; y < info_header.width - padding - block_adjustment; y++)
         {
             if (y > padding)
             {
@@ -661,6 +687,101 @@ void Bitmap_cpp::HistogramEqualization_Local(int block_size)
     data = new_data;
 }
 
+void Bitmap_cpp::SpatialLowPassFilter(const int filter_size)
+{
+    CheckValid();
+    if (filter_size <= 0)
+        throw invalid_argument("Error: filter size must be greater than 0");
+    if (filter_size % 2 == 0)
+        throw invalid_argument("Error: filter size must be an odd number");
+
+    vector<vector<pixel>> new_data = data;
+    const int padding = filter_size / 2;
+    for (int x = padding; x < info_header.height - padding; x++)
+    {
+        int sum_r = 0, sum_g = 0, sum_b = 0;
+        for (int i = -padding; i <= padding; i++)
+        {
+            for (int j = -padding; j <= padding; j++)
+            {
+                sum_r += data[x + i][padding + j].r;
+                sum_g += data[x + i][padding + j].g;
+                sum_b += data[x + i][padding + j].b;
+            }
+        }
+
+        for (int y = padding; y < info_header.width - padding; y++)
+        {
+            if (y > padding)
+            {
+                for (int i = -padding; i <= padding; i++)
+                {
+                    sum_r -= data[x + i][y - padding - 1].r;
+                    sum_r += data[x + i][y + padding].r;
+                    sum_g -= data[x + i][y - padding - 1].g;
+                    sum_g += data[x + i][y + padding].g;
+                    sum_b -= data[x + i][y - padding - 1].b;
+                    sum_b += data[x + i][y + padding].b;
+                }
+            }
+
+            const int filter_size_2 = filter_size * filter_size;
+            new_data[x][y].r = sum_r / filter_size_2;
+            new_data[x][y].g = sum_g / filter_size_2;
+            new_data[x][y].b = sum_b / filter_size_2;
+        }
+    }
+    data = new_data;
+}
+
+void Bitmap_cpp::MedianFilter(const int filter_size)
+{
+    CheckValid();
+    if (filter_size <= 0)
+        throw invalid_argument("Error: filter size must be greater than 0");
+    if (filter_size % 2 == 0)
+        throw invalid_argument("Error: filter size must be an odd number");
+    
+    vector<vector<pixel>> new_data = data;
+    const int padding = filter_size / 2;
+    const int filter_size_2 = filter_size * filter_size;
+    for (int x = padding; x < info_header.height - padding; x++)
+    {
+        vector<int> r_values(filter_size_2), g_values(filter_size_2), b_values(filter_size_2);
+        for (int i = -padding; i <= padding; i++)
+        {
+            for (int j = -padding; j <= padding; j++)
+            {
+                r_values[(i + padding) * filter_size + (j + padding)] = data[x + i][padding + j].r;
+                g_values[(i + padding) * filter_size + (j + padding)] = data[x + i][padding + j].g;
+                b_values[(i + padding) * filter_size + (j + padding)] = data[x + i][padding + j].b;
+            }
+        }
+
+        for (int y = padding; y < info_header.width - padding; y++)
+        {
+            if (y > padding)
+            {
+                for (int i = -padding; i <= padding; i++)
+                {
+                    r_values[(i + padding) * filter_size + (y - padding - 1) % filter_size] = data[x + i][y + padding].r;
+                    g_values[(i + padding) * filter_size + (y - padding - 1) % filter_size] = data[x + i][y + padding].g;
+                    b_values[(i + padding) * filter_size + (y - padding - 1) % filter_size] = data[x + i][y + padding].b;
+                }
+            }
+            vector<int> r_temp = r_values, g_temp = g_values, b_temp = b_values;
+
+            sort(r_temp.begin(), r_temp.end());
+            sort(g_temp.begin(), g_temp.end());
+            sort(b_temp.begin(), b_temp.end());
+            new_data[x][y].r = r_temp[filter_size_2 / 2];
+            new_data[x][y].g = g_temp[filter_size_2 / 2];
+            new_data[x][y].b = b_temp[filter_size_2 / 2];
+        }
+    }
+    data = new_data;
+}
+
 Bitmap_cpp Bitmap_cpp::operator+(const Bitmap_cpp& other)
 {
     CheckValid();
@@ -692,6 +813,9 @@ Bitmap_cpp Bitmap_cpp::operator-(const Bitmap_cpp& other)
 Bitmap_cpp Bitmap_cpp::operator*(const int& scaler)
 {
     CheckValid();
+    if (scaler <= 0)
+        throw invalid_argument("Error: scaler must be greater than 0");
+
     Bitmap_cpp result = *this;
     for (int x = 0; x < info_header.height; x++)
         for (int y = 0; y < info_header.width; y++)
@@ -704,7 +828,7 @@ Bitmap_cpp Bitmap_cpp::operator/(const int& scaler)
 {
     CheckValid();
     if (scaler == 0)
-        throw runtime_error("Error: division by zero");
+        throw invalid_argument("Error: division by zero");
 
     Bitmap_cpp result = *this;
     for (int x = 0; x < info_header.height; x++)
