@@ -1,8 +1,8 @@
 # Bitmap C++ Library
 
-簡單的 BMP 圖檔處理程式庫，用來配合 Visual Studio C++/CLI 專案使用，
+簡單的 Bitmap 圖檔處理程式庫，用來配合 Visual Studio C++/CLI 專案使用，
 只使用基礎的標準庫，以減少對於外部開發環境的依賴，
-目前對於C++/CLI開發環境支援轉換為Bitmap^物件，純C++環境支援直接輸出BMP檔案。
+目前對於 C++/CLI 開發環境支援轉換為 Bitmap^ 物件，純 C++ 環境支援直接輸出為 .bmp 檔案。
 
 ## 功能
 - 讀取/寫入 BMP 檔案
