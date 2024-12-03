@@ -7,6 +7,7 @@
 #include <iostream>
 #include <random>
 #include <algorithm>
+#include <numeric>
 using namespace std;
 
 #pragma pack(push, 1)
@@ -119,10 +120,11 @@ public:
     void Resize(int width, int height, int start_x = 0, int start_y = 0);
     void toGray();
     void InvertColor();
-    void AddImpluseNoise(const int noise_ratio = 10, const float salt_ratio = 0.5, const float pepper_ratio = 0.5);
+    void AddImpluseNoise(const int salt_ratio = 5, const int pepper_ratio = 5);
+    void AddGaussianNoise(const int mean = 0, const int variance = 10);
 
     // Image processing
-    void mix_with(const Bitmap_cpp& other, const double& ratio = 0.5);
+    void mix_with(const Bitmap_cpp& other, const double ratio = 0.5);
     void ZoomIn_ZeroOrder(const int scale = 2);
     void ZoomIn_FirstOrder(const int scale = 2);
     void ZoomIn_Compare(const int scale = 2);
@@ -132,6 +134,7 @@ public:
     void HistogramEqualization_Local(const int block_size = 7);
     void SpatialLowPassFilter(const int filter_size = 3);
     void MedianFilter(const int filter_size = 3);
+    void AlphaTrimmedMeanFilter(const int filter_size = 3, const int removed_elements = 1);
 
     // Operators
     Bitmap_cpp operator+(const Bitmap_cpp& other);
@@ -339,25 +342,47 @@ void Bitmap_cpp::InvertColor()
     }
 }
 
-void Bitmap_cpp::AddImpluseNoise(const int noise_ratio, const float salt_ratio, const float pepper_ratio)
+void Bitmap_cpp::AddImpluseNoise(const int salt_ratio, const int pepper_ratio)
 {
     CheckValid();
-    if (noise_ratio < 0 || noise_ratio > 100)
-        throw invalid_argument("Error: noise ratio must be between 0 and 100");
+    if (salt_ratio < 0 || pepper_ratio < 0 || salt_ratio + pepper_ratio > 100)
+        throw invalid_argument("Error: salt and pepper ratio must be greater than 0 and less than 100");
     
     random_device rd;
     mt19937 gen(rd());
     uniform_real_distribution<float> dis(0, 1);
-    float noise_ratio_f = noise_ratio / 100.0;
-    float salt_ratio_f = salt_ratio / (salt_ratio + pepper_ratio);
 
+    const float noise_ratio_f = (salt_ratio + pepper_ratio) / 100.0;
+    const float salt_ratio_f = static_cast<float>(salt_ratio) / (salt_ratio + pepper_ratio);
     for (auto& row : data)
         for (auto& p : row)
             if (dis(gen) < noise_ratio_f)
-                p.r = p.g = p.b = dis(gen) > salt_ratio_f ? 255 : 0;
+                p.r = p.g = p.b = dis(gen) > salt_ratio_f ? 0 : 255;
 }
 
-void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const double& ratio)
+void Bitmap_cpp::AddGaussianNoise(const int mean, const int variance)
+{
+    CheckValid();
+    if (variance < 0)
+        throw invalid_argument("Error: standard deviation must be greater than 0");
+    
+    random_device rd;
+    mt19937 gen(rd());
+    normal_distribution<float> dis(mean, sqrt(variance));
+    
+    for (auto& row : data)
+    {
+        for (auto& p : row)
+        {
+            float noise = dis(gen);
+            p.r = min(255, max(0, static_cast<int>(p.r + noise)));
+            p.g = min(255, max(0, static_cast<int>(p.g + noise)));
+            p.b = min(255, max(0, static_cast<int>(p.b + noise)));
+        }
+    }
+}
+
+void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const double ratio)
 {
     CheckValid();
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
@@ -742,19 +767,21 @@ void Bitmap_cpp::MedianFilter(const int filter_size)
     if (filter_size % 2 == 0)
         throw invalid_argument("Error: filter size must be an odd number");
     
-    vector<vector<pixel>> new_data = data;
+    vector<vector<pixel>> new_data(info_header.height, vector<pixel>(info_header.width));
     const int padding = filter_size / 2;
-    const int filter_size_2 = filter_size * filter_size;
+    const int filter_pixels = filter_size * filter_size;
     for (int x = padding; x < info_header.height - padding; x++)
     {
-        vector<int> r_values(filter_size_2), g_values(filter_size_2), b_values(filter_size_2);
+        vector<int> r_values(filter_pixels), g_values(filter_pixels), b_values(filter_pixels);
         for (int i = -padding; i <= padding; i++)
         {
+            const int row_offset = (i + padding) * filter_size;
             for (int j = -padding; j <= padding; j++)
             {
-                r_values[(i + padding) * filter_size + (j + padding)] = data[x + i][padding + j].r;
-                g_values[(i + padding) * filter_size + (j + padding)] = data[x + i][padding + j].g;
-                b_values[(i + padding) * filter_size + (j + padding)] = data[x + i][padding + j].b;
+                const int index = row_offset + (j + padding);
+                r_values[index] = data[x + i][padding + j].r;
+                g_values[index] = data[x + i][padding + j].g;
+                b_values[index] = data[x + i][padding + j].b;
             }
         }
 
@@ -764,19 +791,86 @@ void Bitmap_cpp::MedianFilter(const int filter_size)
             {
                 for (int i = -padding; i <= padding; i++)
                 {
-                    r_values[(i + padding) * filter_size + (y - padding - 1) % filter_size] = data[x + i][y + padding].r;
-                    g_values[(i + padding) * filter_size + (y - padding - 1) % filter_size] = data[x + i][y + padding].g;
-                    b_values[(i + padding) * filter_size + (y - padding - 1) % filter_size] = data[x + i][y + padding].b;
+                    const int index = (i + padding) * filter_size + ((y - padding - 1) % filter_size);
+                    r_values[index] = data[x + i][y + padding].r;
+                    g_values[index] = data[x + i][y + padding].g;
+                    b_values[index] = data[x + i][y + padding].b;
                 }
             }
-            vector<int> r_temp = r_values, g_temp = g_values, b_temp = b_values;
 
-            sort(r_temp.begin(), r_temp.end());
-            sort(g_temp.begin(), g_temp.end());
-            sort(b_temp.begin(), b_temp.end());
-            new_data[x][y].r = r_temp[filter_size_2 / 2];
-            new_data[x][y].g = g_temp[filter_size_2 / 2];
-            new_data[x][y].b = b_temp[filter_size_2 / 2];
+            auto KthElement = [](vector<int> vec, const int k) 
+            {
+                nth_element(vec.begin(), vec.begin() + k, vec.end());
+                return vec[k];
+            };
+            new_data[x][y].r = KthElement(r_values, filter_pixels / 2);
+            new_data[x][y].g = KthElement(g_values, filter_pixels / 2);
+            new_data[x][y].b = KthElement(b_values, filter_pixels / 2);
+        }
+    }
+    data = new_data;
+}
+
+void Bitmap_cpp::AlphaTrimmedMeanFilter(const int filter_size, const int removed_elements)
+{
+    CheckValid();
+    if (filter_size <= 0)
+        throw invalid_argument("Error: filter size must be greater than 0");
+    if (filter_size % 2 == 0)
+        throw invalid_argument("Error: filter size must be an odd number");
+    const int filter_pixels = filter_size * filter_size;
+    if (filter_pixels <= removed_elements * 2)
+        throw invalid_argument("Error: removed_elements must be less than half of the filter size");
+    
+    vector<vector<pixel>> new_data(info_header.height, vector<pixel>(info_header.width));
+    const int padding = filter_size / 2;
+    for (int x = padding; x < info_header.height - padding; x++)
+    {
+        vector<int> r_values(filter_pixels), g_values(filter_pixels), b_values(filter_pixels);
+        for (int i = -padding; i <= padding; i++)
+        {
+            const int row_offset = (i + padding) * filter_size;
+            for (int j = -padding; j <= padding; j++)
+            {
+                const int index = row_offset + (j + padding);
+                r_values[index] = data[x + i][padding + j].r;
+                g_values[index] = data[x + i][padding + j].g;
+                b_values[index] = data[x + i][padding + j].b;
+            }
+        }
+
+        for (int y = padding; y < info_header.width - padding; y++)
+        {
+            if (y > padding)
+            {
+                for (int i = -padding; i <= padding; i++)
+                {
+                    const int index = (i + padding) * filter_size + ((y - padding - 1) % filter_size);
+                    r_values[index] = data[x + i][y + padding].r;
+                    g_values[index] = data[x + i][y + padding].g;
+                    b_values[index] = data[x + i][y + padding].b;
+                }
+            }
+
+            nth_element(r_values.begin(), r_values.begin() + removed_elements, r_values.end());
+            nth_element(r_values.begin() + removed_elements, r_values.end() - removed_elements, r_values.end());
+            nth_element(g_values.begin(), g_values.begin() + removed_elements, g_values.end());
+            nth_element(g_values.begin() + removed_elements, g_values.end() - removed_elements, g_values.end());
+            nth_element(b_values.begin(), b_values.begin() + removed_elements, b_values.end());
+            nth_element(b_values.begin() + removed_elements, b_values.end() - removed_elements, b_values.end());
+
+            int sum_r = 0, sum_g = 0, sum_b = 0;
+            for (int i = removed_elements; i < filter_pixels - removed_elements; i++) 
+            {
+                sum_r += r_values[i];
+                sum_g += g_values[i];
+                sum_b += b_values[i];
+            }
+
+            const int remaining_elements = filter_pixels - removed_elements * 2;
+            new_data[x][y].r = sum_r / remaining_elements;
+            new_data[x][y].g = sum_g / remaining_elements;
+            new_data[x][y].b = sum_b / remaining_elements;
         }
     }
     data = new_data;
