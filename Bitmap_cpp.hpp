@@ -775,10 +775,10 @@ void Bitmap_cpp::MedianFilter(const int filter_size)
         vector<int> r_values(filter_pixels), g_values(filter_pixels), b_values(filter_pixels);
         for (int i = -padding; i <= padding; i++)
         {
-            const int row_offset = (i + padding) * filter_size;
+            const int offset = i + padding;
             for (int j = -padding; j <= padding; j++)
             {
-                const int index = row_offset + (j + padding);
+                const int index = (j + padding) * filter_size + offset;
                 r_values[index] = data[x + i][padding + j].r;
                 g_values[index] = data[x + i][padding + j].g;
                 b_values[index] = data[x + i][padding + j].b;
@@ -789,9 +789,10 @@ void Bitmap_cpp::MedianFilter(const int filter_size)
         {
             if (y > padding)
             {
+                const int row_offset = (y - padding - 1) * filter_size % filter_pixels;
                 for (int i = -padding; i <= padding; i++)
                 {
-                    const int index = (i + padding) * filter_size + ((y - padding - 1) % filter_size);
+                    const int index = (row_offset + (i + padding)) % filter_pixels;
                     r_values[index] = data[x + i][y + padding].r;
                     g_values[index] = data[x + i][y + padding].g;
                     b_values[index] = data[x + i][y + padding].b;
@@ -829,10 +830,10 @@ void Bitmap_cpp::AlphaTrimmedMeanFilter(const int filter_size, const int removed
         vector<int> r_values(filter_pixels), g_values(filter_pixels), b_values(filter_pixels);
         for (int i = -padding; i <= padding; i++)
         {
-            const int row_offset = (i + padding) * filter_size;
+            const int offset = i + padding;
             for (int j = -padding; j <= padding; j++)
             {
-                const int index = row_offset + (j + padding);
+                const int index = (j + padding) * filter_size + offset;
                 r_values[index] = data[x + i][padding + j].r;
                 g_values[index] = data[x + i][padding + j].g;
                 b_values[index] = data[x + i][padding + j].b;
@@ -843,9 +844,10 @@ void Bitmap_cpp::AlphaTrimmedMeanFilter(const int filter_size, const int removed
         {
             if (y > padding)
             {
+                const int row_offset = (y - padding - 1) * filter_size % filter_pixels;
                 for (int i = -padding; i <= padding; i++)
                 {
-                    const int index = (i + padding) * filter_size + ((y - padding - 1) % filter_size);
+                    const int index = (row_offset + (i + padding)) % filter_pixels;
                     r_values[index] = data[x + i][y + padding].r;
                     g_values[index] = data[x + i][y + padding].g;
                     b_values[index] = data[x + i][y + padding].b;
