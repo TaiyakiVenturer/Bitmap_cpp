@@ -124,7 +124,7 @@ public:
     void AddGaussianNoise(const int mean = 0, const int variance = 10);
 
     // Image processing
-    void mix_with(const Bitmap_cpp& other, const double ratio = 0.5);
+    void mix_with(const Bitmap_cpp& other, const float ratio = 0.5f);
     void ZoomIn_ZeroOrder(const int scale = 2);
     void ZoomIn_FirstOrder(const int scale = 2);
     void ZoomIn_Compare(const int scale = 2);
@@ -132,9 +132,15 @@ public:
     void ZoomOut(const int scale = 2);
     void HistogramEqualization_Global();
     void HistogramEqualization_Local(const int block_size = 7);
+
+    // Smoothing filters
     void SpatialLowPassFilter(const int filter_size = 3);
     void MedianFilter(const int filter_size = 3);
     void AlphaTrimmedMeanFilter(const int filter_size = 3, const int removed_elements = 1);
+
+    // Sharpening filters
+    void SpatialHighPassFilter(const int filter_size = 3);
+    void SpatialHighBoostFilter(const int filter_size = 3, const float boost_ratio = 1.5f);
 
     // Operators
     Bitmap_cpp operator+(const Bitmap_cpp& other);
@@ -186,7 +192,8 @@ void Bitmap_cpp::LoadBmp(string file_path)
         case 24:
         {
             #ifndef __cplusplus_cli
-            cout << "It's a 24-bit Bitmap file" << endl;
+            string file_name = file_path.substr(file_path.find_last_of("/\\") + 1);
+            cout << file_name << " is a 24-bit Bitmap file" << endl;
             #endif
 
             int padding = (4 - (info_header.width * 3) % 4) % 4;
@@ -212,7 +219,8 @@ void Bitmap_cpp::LoadBmp(string file_path)
         case 32:
         {
             #ifndef __cplusplus_cli
-            cout << "It's a 32-bit Bitmap file" << endl;
+            string file_name = file_path.substr(file_path.find_last_of("/\\") + 1);
+            cout << file_name << " is a 32-bit Bitmap file" << endl;
             #endif
 
             data.resize(info_header.height);
@@ -382,7 +390,7 @@ void Bitmap_cpp::AddGaussianNoise(const int mean, const int variance)
     }
 }
 
-void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const double ratio)
+void Bitmap_cpp::mix_with(const Bitmap_cpp& other, const float ratio)
 {
     CheckValid();
     if (info_header.width != other.info_header.width || info_header.height != other.info_header.height)
@@ -876,6 +884,89 @@ void Bitmap_cpp::AlphaTrimmedMeanFilter(const int filter_size, const int removed
         }
     }
     data = new_data;
+}
+
+void Bitmap_cpp::SpatialHighPassFilter(const int filter_size)
+{
+    CheckValid();
+    if (filter_size <= 0)
+        throw invalid_argument("Error: filter size must be greater than 0");
+    if (filter_size % 2 == 0)
+        throw invalid_argument("Error: filter size must be an odd number");
+    
+    vector<vector<pixel>> new_data(info_header.height, vector<pixel>(info_header.width));
+    const int padding = filter_size / 2, filter_pixels = filter_size * filter_size;
+    vector<int> kernel(filter_pixels, -1);
+    kernel[padding * filter_size + padding] = filter_pixels - 1;
+
+    for (int x = padding; x < info_header.height - padding; x++)
+    {
+        vector<int> kernel_r(filter_pixels), kernel_g(filter_pixels), kernel_b(filter_pixels);
+        for (int i = -padding; i <= padding; i++)
+        {
+            const int offset = i + padding;
+            for (int j = -padding; j <= padding; j++)
+            {
+                const int index = (j + padding) * filter_size + offset;
+                kernel_r[index] = data[x + i][padding + j].r;
+                kernel_g[index] = data[x + i][padding + j].g;
+                kernel_b[index] = data[x + i][padding + j].b;
+            }
+        }
+        
+        for (int y = padding; y < info_header.width - padding; y++)
+        {
+            if (y > padding)
+            {
+                const int row_offset = (y - padding - 1) * filter_size % filter_pixels;
+                for (int i = -padding; i <= padding; i++)
+                {
+                    const int index = (row_offset + (i + padding)) % filter_pixels;
+                    kernel_r[index] = data[x + i][y + padding].r;
+                    kernel_g[index] = data[x + i][y + padding].g;
+                    kernel_b[index] = data[x + i][y + padding].b;
+                }
+            }
+
+            int sum_r = 0, sum_g = 0, sum_b = 0;
+            for (int i = 0; i < filter_pixels; i++)
+            {
+                sum_r += kernel_r[i] * kernel[i];
+                sum_g += kernel_g[i] * kernel[i];
+                sum_b += kernel_b[i] * kernel[i];
+            }
+
+            new_data[x][y].r = max(0, min(255, sum_r / filter_pixels));
+            new_data[x][y].g = max(0, min(255, sum_g / filter_pixels));
+            new_data[x][y].b = max(0, min(255, sum_b / filter_pixels));
+        }
+    }
+    data = new_data;
+}
+
+void Bitmap_cpp::SpatialHighBoostFilter(const int filter_size, const float boost_ratio)
+{
+    CheckValid();
+    if (filter_size <= 0)
+        throw invalid_argument("Error: filter size must be greater than 0");
+    if (filter_size % 2 == 0)
+        throw invalid_argument("Error: filter size must be an odd number");
+    if (boost_ratio < 1.0f)
+        throw invalid_argument("Error: boost ratio must be greater than 1.0");
+
+    vector<vector<pixel>> original = data;
+    this->SpatialHighPassFilter(filter_size);
+    vector<vector<pixel>> highpass = data;
+
+    for (int x = 0; x < info_header.height; x++)
+    {
+        for (int y = 0; y < info_header.width; y++)
+        {
+            data[x][y].r = min(255, max(0, static_cast<int>((boost_ratio - 1) * original[x][y].r + highpass[x][y].r)));
+            data[x][y].g = min(255, max(0, static_cast<int>((boost_ratio - 1) * original[x][y].g + highpass[x][y].g)));
+            data[x][y].b = min(255, max(0, static_cast<int>((boost_ratio - 1) * original[x][y].b + highpass[x][y].b)));
+        }
+    }
 }
 
 Bitmap_cpp Bitmap_cpp::operator+(const Bitmap_cpp& other)
