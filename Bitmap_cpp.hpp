@@ -7,7 +7,6 @@
 #include <iostream>
 #include <random>
 #include <algorithm>
-#include <numeric>
 using namespace std;
 
 #pragma pack(push, 1)
@@ -141,6 +140,11 @@ public:
     // Sharpening filters
     void SpatialHighPassFilter(const int filter_size = 3);
     void SpatialHighBoostFilter(const int filter_size = 3, const float boost_ratio = 1.5f);
+
+    // Edge detection
+    void PrewittOperator(bool Diagonal = false);
+    void SobelOperator(bool Diagonal = false);
+    void LaplacianOperator(bool Enhanced = false);
 
     // Operators
     Bitmap_cpp operator+(const Bitmap_cpp& other);
@@ -800,7 +804,7 @@ void Bitmap_cpp::MedianFilter(const int filter_size)
                 const int row_offset = (y - padding - 1) * filter_size % filter_pixels;
                 for (int i = -padding; i <= padding; i++)
                 {
-                    const int index = (row_offset + (i + padding)) % filter_pixels;
+                    const int index = row_offset + (i + padding);
                     r_values[index] = data[x + i][y + padding].r;
                     g_values[index] = data[x + i][y + padding].g;
                     b_values[index] = data[x + i][y + padding].b;
@@ -855,7 +859,7 @@ void Bitmap_cpp::AlphaTrimmedMeanFilter(const int filter_size, const int removed
                 const int row_offset = (y - padding - 1) * filter_size % filter_pixels;
                 for (int i = -padding; i <= padding; i++)
                 {
-                    const int index = (row_offset + (i + padding)) % filter_pixels;
+                    const int index = row_offset + (i + padding);
                     r_values[index] = data[x + i][y + padding].r;
                     g_values[index] = data[x + i][y + padding].g;
                     b_values[index] = data[x + i][y + padding].b;
@@ -898,6 +902,11 @@ void Bitmap_cpp::SpatialHighPassFilter(const int filter_size)
     const int padding = filter_size / 2, filter_pixels = filter_size * filter_size;
     vector<int> kernel(filter_pixels, -1);
     kernel[padding * filter_size + padding] = filter_pixels - 1;
+    /* kernel example, filter_size = 3
+    -1 -1 -1
+    -1  8 -1
+    -1 -1 -1
+    */
 
     for (int x = padding; x < info_header.height - padding; x++)
     {
@@ -921,7 +930,7 @@ void Bitmap_cpp::SpatialHighPassFilter(const int filter_size)
                 const int row_offset = (y - padding - 1) * filter_size % filter_pixels;
                 for (int i = -padding; i <= padding; i++)
                 {
-                    const int index = (row_offset + (i + padding)) % filter_pixels;
+                    const int index = row_offset + (i + padding);
                     kernel_r[index] = data[x + i][y + padding].r;
                     kernel_g[index] = data[x + i][y + padding].g;
                     kernel_b[index] = data[x + i][y + padding].b;
@@ -967,6 +976,223 @@ void Bitmap_cpp::SpatialHighBoostFilter(const int filter_size, const float boost
             data[x][y].b = min(255, max(0, static_cast<int>((boost_ratio - 1) * original[x][y].b + highpass[x][y].b)));
         }
     }
+}
+
+void Bitmap_cpp::PrewittOperator(bool Diagonal)
+{
+    CheckValid();
+
+    const vector<vector<int>> kernel_x = !Diagonal ?
+        vector<vector<int>>{
+            {-1, 0, 1},
+            {-1, 0, 1},
+            {-1, 0, 1}
+        } :
+        vector<vector<int>>{
+            {-1, -1, 0},
+            {-1,  0, 1},
+            { 0,  1, 1}
+        };
+    const vector<vector<int>> kernel_y = !Diagonal ?
+        vector<vector<int>>{
+            {-1, -1, -1},
+            { 0,  0,  0},
+            { 1,  1,  1}
+        } :
+        vector<vector<int>>{
+            { 0,  1,  1},
+            {-1,  0,  1},
+            {-1, -1,  0}
+        };
+    vector<vector<pixel>> new_data(info_header.height, vector<pixel>(info_header.width));
+    const int padding = 1, filter_size = 3, filter_pixels = filter_size * filter_size;
+
+    for (int x = padding; x < info_header.height - padding; x++)
+    {
+        vector<int> kernel_r(filter_pixels), kernel_g(filter_pixels), kernel_b(filter_pixels);
+        for (int i = -padding; i <= padding; i++)
+        {
+            const int offset = i + padding;
+            for (int j = -padding; j <= padding; j++)
+            {
+                const int index = (j + padding) * filter_size + offset;
+                kernel_r[index] = data[x + i][padding + j].r;
+                kernel_g[index] = data[x + i][padding + j].g;
+                kernel_b[index] = data[x + i][padding + j].b;
+            }
+        }
+        
+        for (int y = padding; y < info_header.width - padding; y++)
+        {
+            if (y > padding)
+            {
+                const int row_offset = (y - padding - 1) * filter_size % filter_pixels;
+                for (int i = -padding; i <= padding; i++)
+                {
+                    const int index = row_offset + (i + padding);
+                    kernel_r[index] = data[x + i][y + padding].r;
+                    kernel_g[index] = data[x + i][y + padding].g;
+                    kernel_b[index] = data[x + i][y + padding].b;
+                }
+            }
+
+            int sum_r_x = 0, sum_g_x = 0, sum_b_x = 0, sum_r_y = 0, sum_g_y = 0, sum_b_y = 0;
+            for (int i = 0; i < filter_pixels; i++)
+            {
+                sum_r_x += kernel_r[i] * kernel_x[i / filter_size][i % filter_size];
+                sum_g_x += kernel_g[i] * kernel_x[i / filter_size][i % filter_size];
+                sum_b_x += kernel_b[i] * kernel_x[i / filter_size][i % filter_size];
+                sum_r_y += kernel_r[i] * kernel_y[i / filter_size][i % filter_size];
+                sum_g_y += kernel_g[i] * kernel_y[i / filter_size][i % filter_size];
+                sum_b_y += kernel_b[i] * kernel_y[i / filter_size][i % filter_size];
+            }
+
+            new_data[x][y].r = min(255, max(0, abs(sum_r_x) + abs(sum_r_y)));
+            new_data[x][y].g = min(255, max(0, abs(sum_g_x) + abs(sum_g_y)));
+            new_data[x][y].b = min(255, max(0, abs(sum_b_x) + abs(sum_b_y)));
+        }
+    }
+    data = new_data;
+}
+
+void Bitmap_cpp::SobelOperator(bool Diagonal)
+{
+    CheckValid();
+
+    const vector<vector<int>> kernel_x = !Diagonal ?
+        vector<vector<int>>{
+            {-1, 0, 1},
+            {-2, 0, 2},
+            {-1, 0, 1}
+        } :
+        vector<vector<int>>{
+            {-2, -1, 0},
+            {-1,  0, 1},
+            { 0,  1, 2}
+        };
+    const vector<vector<int>> kernel_y = !Diagonal ?
+        vector<vector<int>>{
+            {-1, -2, -1},
+            { 0,  0,  0},
+            { 1,  2,  1}
+        } :
+        vector<vector<int>>{
+            { 0,  1,  2},
+            {-1,  0,  1},
+            {-2, -1,  0}
+        };
+    vector<vector<pixel>> new_data(info_header.height, vector<pixel>(info_header.width));
+    const int padding = 1, filter_size = 3, filter_pixels = filter_size * filter_size;
+
+    for (int x = padding; x < info_header.height - padding; x++)
+    {
+        vector<int> kernel_r(filter_pixels), kernel_g(filter_pixels), kernel_b(filter_pixels);
+        for (int i = -padding; i <= padding; i++)
+        {
+            const int offset = i + padding;
+            for (int j = -padding; j <= padding; j++)
+            {
+                const int index = (j + padding) * filter_size + offset;
+                kernel_r[index] = data[x + i][padding + j].r;
+                kernel_g[index] = data[x + i][padding + j].g;
+                kernel_b[index] = data[x + i][padding + j].b;
+            }
+        }
+        
+        for (int y = padding; y < info_header.width - padding; y++)
+        {
+            if (y > padding)
+            {
+                const int row_offset = (y - padding - 1) * filter_size % filter_pixels;
+                for (int i = -padding; i <= padding; i++)
+                {
+                    const int index = row_offset + (i + padding);
+                    kernel_r[index] = data[x + i][y + padding].r;
+                    kernel_g[index] = data[x + i][y + padding].g;
+                    kernel_b[index] = data[x + i][y + padding].b;
+                }
+            }
+
+            int sum_r_x = 0, sum_g_x = 0, sum_b_x = 0, sum_r_y = 0, sum_g_y = 0, sum_b_y = 0;
+            for (int i = 0; i < filter_pixels; i++)
+            {
+                sum_r_x += kernel_r[i] * kernel_x[i / filter_size][i % filter_size];
+                sum_g_x += kernel_g[i] * kernel_x[i / filter_size][i % filter_size];
+                sum_b_x += kernel_b[i] * kernel_x[i / filter_size][i % filter_size];
+                sum_r_y += kernel_r[i] * kernel_y[i / filter_size][i % filter_size];
+                sum_g_y += kernel_g[i] * kernel_y[i / filter_size][i % filter_size];
+                sum_b_y += kernel_b[i] * kernel_y[i / filter_size][i % filter_size];
+            }
+
+            new_data[x][y].r = min(255, max(0, abs(sum_r_x) + abs(sum_r_y)));
+            new_data[x][y].g = min(255, max(0, abs(sum_g_x) + abs(sum_g_y)));
+            new_data[x][y].b = min(255, max(0, abs(sum_b_x) + abs(sum_b_y)));
+        }
+    }
+    data = new_data;
+}
+
+void Bitmap_cpp::LaplacianOperator(bool Enhanced)
+{
+    CheckValid();
+
+    const vector<vector<int>> kernel = !Enhanced ?
+        vector<vector<int>>{
+            { 0,  1,  0},
+            { 1, -4,  1},
+            { 0,  1,  0}
+        } :
+        vector<vector<int>>{
+            { 1,  1,  1},
+            { 1, -8,  1},
+            { 1,  1,  1}
+        };
+    vector<vector<pixel>> new_data(info_header.height, vector<pixel>(info_header.width));
+    const int padding = 1, filter_size = 3, filter_pixels = filter_size * filter_size;
+
+    for (int x = padding; x < info_header.height - padding; x++)
+    {
+        vector<int> kernel_r(filter_pixels), kernel_g(filter_pixels), kernel_b(filter_pixels);
+        for (int i = -padding; i <= padding; i++)
+        {
+            const int offset = i + padding;
+            for (int j = -padding; j <= padding; j++)
+            {
+                const int index = (j + padding) * filter_size + offset;
+                kernel_r[index] = data[x + i][padding + j].r;
+                kernel_g[index] = data[x + i][padding + j].g;
+                kernel_b[index] = data[x + i][padding + j].b;
+            }
+        }
+        
+        for (int y = padding; y < info_header.width - padding; y++)
+        {
+            if (y > padding)
+            {
+                const int row_offset = (y - padding - 1) * filter_size % filter_pixels;
+                for (int i = -padding; i <= padding; i++)
+                {
+                    const int index = row_offset + (i + padding);
+                    kernel_r[index] = data[x + i][y + padding].r;
+                    kernel_g[index] = data[x + i][y + padding].g;
+                    kernel_b[index] = data[x + i][y + padding].b;
+                }
+            }
+
+            int sum_r = 0, sum_g = 0, sum_b = 0;
+            for (int i = 0; i < filter_pixels; i++)
+            {
+                sum_r += kernel_r[i] * kernel[i / filter_size][i % filter_size];
+                sum_g += kernel_g[i] * kernel[i / filter_size][i % filter_size];
+                sum_b += kernel_b[i] * kernel[i / filter_size][i % filter_size];
+            }
+
+            new_data[x][y].r = min(255, max(0, sum_r));
+            new_data[x][y].g = min(255, max(0, sum_g));
+            new_data[x][y].b = min(255, max(0, sum_b));
+        }
+    }
+    data = new_data;
 }
 
 Bitmap_cpp Bitmap_cpp::operator+(const Bitmap_cpp& other)
