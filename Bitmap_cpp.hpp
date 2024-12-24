@@ -18,7 +18,8 @@ struct bmp_header
     uint32_t data_offset;
 };
 
-struct bmp_info_header {
+struct bmp_info_header 
+{
     uint32_t size;
     int32_t width;
     int32_t height;
@@ -145,6 +146,10 @@ public:
     void PrewittOperator(bool Diagonal = false);
     void SobelOperator(bool Diagonal = false);
     void LaplacianOperator(bool Enhanced = false);
+
+    vector<int> DCT_Transform(const vector<pixel> data, const float u, const float v, const int N);
+    pixel IDCT_Transform(const vector<vector<int>> data, const float x, const float y, const int N);
+    void DCT_Compress();
 
     // Operators
     Bitmap_cpp operator+(const Bitmap_cpp& other);
@@ -278,6 +283,8 @@ void Bitmap_cpp::SaveBmp(string file_path)
             }
             if (!file.good())
                 throw runtime_error("Error: failed to write 24-bit Bitmap file");
+            else
+                cout << file_path.substr(file_path.find_last_of("/\\") + 1) << " is saved" << endl;
             break;
         }
         case 32:
@@ -286,6 +293,8 @@ void Bitmap_cpp::SaveBmp(string file_path)
                 file.write(reinterpret_cast<char*>(row.data()), info_header.width * 4);
             if (!file.good())
                 throw runtime_error("Error: failed to write 32-bit Bitmap file");
+            else
+                cout << file_path.substr(file_path.find_last_of("/\\") + 1) << " is saved" << endl;
             break;
         }
         default:
@@ -1193,6 +1202,113 @@ void Bitmap_cpp::LaplacianOperator(bool Enhanced)
         }
     }
     data = new_data;
+}
+
+vector<int> Bitmap_cpp::DCT_Transform(const vector<pixel> data, const float u, const float v, const int N)
+{
+    const float PI = 3.1415926;
+    const float alpha_u = u == 0 ? 1 / sqrt(N) : sqrt(2.0 / N), alpha_v = v == 0 ? 1 / sqrt(N) : sqrt(2.0 / N);
+    const float alpha_coefficient = alpha_u * alpha_v;
+
+    float sum_r = 0, sum_g = 0, sum_b = 0;
+    for (int x = 0; x < N; x++)
+    {
+        const float cos_u = cos((2 * x + 1) * u * PI / (2.0 * N));
+        for (int y = 0; y < N; y++)
+        {
+            const float cos_v = cos((2 * y + 1) * v * PI / (2.0 * N));
+            const float coefficient = cos_u * cos_v;
+            sum_r += (data[x * N + y].r - 128) * coefficient;
+            sum_g += (data[x * N + y].g - 128) * coefficient;
+            sum_b += (data[x * N + y].b - 128) * coefficient;
+        }
+    }
+    return vector<int>{
+        static_cast<int>(alpha_coefficient * sum_r),
+        static_cast<int>(alpha_coefficient * sum_g),
+        static_cast<int>(alpha_coefficient * sum_b)
+    };
+}
+
+pixel Bitmap_cpp::IDCT_Transform(const vector<vector<int>> data, const float x, const float y, const int N)
+{
+    const float PI = 3.1415926;
+
+    float sum_r = 0, sum_g = 0, sum_b = 0;
+    for (int u = 0; u < N; u++)
+    {
+        const float alpha_u = u == 0 ? 1 / sqrt(N) : sqrt(2.0 / N);
+        const float cos_u = cos((2 * x + 1) * u * PI / (2.0 * N));
+        for (int v = 0; v < N; v++)
+        {
+            const float alpha_v = v == 0 ? 1 / sqrt(N) : sqrt(2.0 / N);
+            const float cos_v = cos((2 * y + 1) * v * PI / (2.0 * N));
+            const float coefficient = alpha_u * alpha_v * cos_u * cos_v;
+            sum_r += data[0][u * N + v] * coefficient;
+            sum_g += data[1][u * N + v] * coefficient;
+            sum_b += data[2][u * N + v] * coefficient;
+        }
+    }
+    return pixel{
+        static_cast<unsigned char>(sum_r + 128),
+        static_cast<unsigned char>(sum_g + 128),
+        static_cast<unsigned char>(sum_b + 128)
+    };
+}
+
+void Bitmap_cpp::DCT_Compress()
+{
+    CheckValid();
+    if (info_header.height < 512 || info_header.width < 512)
+        throw runtime_error("Error: image size must be greater than 512x512");
+    if (info_header.height > 512 || info_header.width > 512)
+        this->Resize(512, 512);
+
+    const int N = 8;
+    for (int x = 0; x < info_header.height; x += N)
+    {
+        for (int y = 0; y < info_header.width; y += N)
+        {
+            vector<pixel> block(N * N);
+            for (int i = 0; i < N; i++)
+                for (int j = 0; j < N; j++)
+                    block[i * N + j] = data[x + i][y + j];
+
+            vector<int> dct_block_r(N * N), dct_block_g(N * N), dct_block_b(N * N);
+            for (int u = 0; u < N; u++)
+            {
+                for (int v = 0; v < N; v++)
+                {
+                    vector<int> temp = DCT_Transform(block, u, v, N);
+                    dct_block_r[u * N + v] = temp[0];
+                    dct_block_g[u * N + v] = temp[1];
+                    dct_block_b[u * N + v] = temp[2];
+                }
+            }
+
+            for (int i = 0; i < N; i++)
+            {
+                for (int j = 0; j < N; j++)
+                {
+                    if (i + j >= 4)
+                    {
+                        dct_block_r[i * N + j] = 0;
+                        dct_block_g[i * N + j] = 0;
+                        dct_block_b[i * N + j] = 0;
+                    }
+                }
+            }
+
+            vector<pixel> idct_block(N * N);
+            for (int u = 0; u < N; u++)
+                for (int v = 0; v < N; v++)
+                    idct_block[u * N + v] = IDCT_Transform(vector<vector<int>>{dct_block_r, dct_block_g, dct_block_b}, u, v, N);
+
+            for (int i = 0; i < N; i++)
+                for (int j = 0; j < N; j++)
+                    data[x + i][y + j] = idct_block[i * N + j];
+        }
+    }
 }
 
 Bitmap_cpp Bitmap_cpp::operator+(const Bitmap_cpp& other)
